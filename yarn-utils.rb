@@ -14,7 +14,6 @@ module YarnUtils
     RESERVED_STACK = {4 => 1, 8 => 2, 16 => 2, 24 => 4, 48 => 6, 64 => 8, 72 => 8, 96 => 12, 128 => 24, 256 => 32, 512 => 64}.freeze
     # Reserved for HBase. Map: Memory => Reservation
     RESERVED_HBASE = {4 => 1, 8 => 1, 16 => 2, 24 => 4, 48 => 8, 64 => 8, 72 => 8, 96 => 16, 128 => 24, 256 => 32, 512 => 64}.freeze
-    GB = 1024.freeze
 
     class << self
       def parse_option(argv)
@@ -69,20 +68,14 @@ module YarnUtils
 
       reserved_memory = @reserved_stack_memory + (@hbase ? @reserved_hbase_memory : 0)
       usable_memory = @memory - reserved_memory
-      free_memory = @memory - reserved_memory
-
-      if free_memory < 2
-        free_memory = 2
-        reserved_memory = [0, free_memory - reserved_memory].max
-      end
-
-      free_memory *= GB
+      free_memory = [usable_memory, 2].max * 1024
+      reserved_memory = [0, free_memory - reserved_memory].max if usable_memory < 2
 
       puts "Profile: cores=#{@cores} memory=#{free_memory}MB reservedMem=#{reserved_memory}GB usableMem=#{usable_memory}GB disks=#{@disks}"
 
       containers = [3, [2 * @cores, [(1.8 * @disks.to_f).ceil, free_memory / @min_container_size].min].min.to_i].max
       container_ram = (free_memory / containers).abs
-      container_ram = (container_ram / 512).floor.to_i * 512 if container_ram > GB
+      container_ram = (container_ram / 512).floor.to_i * 512 if container_ram > 1024
 
       map_memory = container_ram
       reduce_memory = container_ram <= 2048 ? 2 * container_ram : container_ram
@@ -91,7 +84,7 @@ module YarnUtils
       result = <<-RESULT
 Num Container=#{containers}
 Container Ram=#{container_ram} MB
-Used Ram=#{(containers * container_ram / GB.to_f).to_i}GB
+Used Ram=#{(containers * container_ram / 1024.0).to_i}GB
 Unused Ram=#{reserved_memory}GB
 yarn.scheduler.minimum-allocation-mb=#{container_ram}
 yarn.scheduler.maximum-allocation-mb=#{containers * container_ram}
